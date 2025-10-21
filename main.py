@@ -3,7 +3,7 @@ import asyncio
 from ratelimiters import Limiter, configure_connection, RateLimitExceeded
 
 configure_connection("redis://localhost:6379")
-limiter = await Limiter.create()
+limiter = Limiter()
 
 @limiter.token_bucket()
 def greeter(name):
@@ -18,6 +18,7 @@ async def main():
             print(e)
 
     await asyncio.sleep(.3)
+    print("After refill")
     await greeter(11)
 
     

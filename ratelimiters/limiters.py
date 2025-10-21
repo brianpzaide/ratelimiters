@@ -11,20 +11,18 @@ class RateLimitExceeded(Exception):
 def configure_connection(valkey_url: str = ""):
     if valkey_url == "":
         raise ValueError("connection string to Valkey/Redis cannot be empty")
+    
     parsed = urlparse(valkey_url)
-    if parsed.scheme.startswith("redis") or parsed.scheme.startswith("valkey"):
-        if "," in parsed.netloc:
-            urls = parsed.netloc.split(",")
-            url = urls[0]
-        else:
-            url = valkey_url
-        pool = valkey.ConnectionPool.from_url(url)
-        Limiter._configure(pool)
-    else:
+    if not parsed.scheme.startswith("redis") and not parsed.scheme.startswith("valkey"):
         raise ValueError("Unsupported URL scheme")
+
+    pool = valkey.ConnectionPool.from_url(valkey_url)
+    Limiter._valkey = valkey.Valkey(connection_pool=pool)
 
 class Limiter:
     _valkey = None
+    _scripts_loaded = False
+    
     _token_bucket_sha = None
     _leaky_bucket_sha = None
     _fixed_window_sha = None
@@ -34,20 +32,16 @@ class Limiter:
 
 
     @classmethod
-    async def _configure(cls, conn_pool):
-        async with cls._lock:
-            cls._valkey = valkey.Valkey(connection_pool=conn_pool)
-            cls._token_bucket_sha = await cls._valkey.script_load(_token_bucket_lua_script)
-            cls._leaky_bucket_sha = await cls._valkey.script_load(_leaky_bucket_lua_script)
-            cls._fixed_window_sha = await cls._valkey.script_load(_fixed_window_lua_script)
-            cls._sliding_window_sha = await cls._valkey.script_load(_sliding_window_lua_script)
-    
-    @classmethod
-    async def create(cls):
+    async def _configure(cls):
         async with cls._lock:
             if not cls._valkey:
-                raise RuntimeError("Limiter not initialized. Call configure_connection() first.")
-            return cls()
+               raise RuntimeError("Limiter not initialized. Call configure_connection() first.")
+            if not cls._scripts_loaded:
+                cls._token_bucket_sha = await cls._valkey.script_load(_token_bucket_lua_script)
+                cls._leaky_bucket_sha = await cls._valkey.script_load(_leaky_bucket_lua_script)
+                cls._fixed_window_sha = await cls._valkey.script_load(_fixed_window_lua_script)
+                cls._sliding_window_sha = await cls._valkey.script_load(_sliding_window_lua_script)
+                cls._scripts_loaded = True
 
 
     def __init__(self):
@@ -58,6 +52,8 @@ class Limiter:
             func_unique_name = f"{func.__module__}.{func.__qualname__}"
             @wraps(func)
             async def wrapper(*args, **kwargs):
+                await Limiter._configure()
+
                 to_allow = await Limiter._valkey.evalsha(Limiter._token_bucket_sha, 1, func_unique_name, 1, capacity, refill_rate)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
@@ -74,6 +70,8 @@ class Limiter:
             func_unique_name = f"{func.__module__}.{func.__qualname__}"
             @wraps(func)
             async def wrapper(*args, **kwargs):
+                await Limiter._configure()
+                
                 to_allow = await Limiter._valkey.evalsha(Limiter._leaky_bucket_sha, 1, func_unique_name, 1, capacity, leak_rate)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
@@ -90,6 +88,8 @@ class Limiter:
             func_unique_name = f"{func.__module__}.{func.__qualname__}"
             @wraps(func)
             async def wrapper(*args, **kwargs):
+                await Limiter._configure()
+                
                 to_allow = await Limiter._valkey.evalsha(Limiter._fixed_window_sha, 1, func_unique_name, 1, capacity, window_size_seconds)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
@@ -106,6 +106,8 @@ class Limiter:
             func_unique_name = f"{func.__module__}.{func.__qualname__}"
             @wraps(func)
             async def wrapper(*args, **kwargs):
+                await Limiter._configure()
+                
                 to_allow = await Limiter._valkey.evalsha(Limiter._sliding_window_sha, 1, func_unique_name, 1, capacity, window_size_seconds)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
