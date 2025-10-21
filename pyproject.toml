@@ -1,0 +1,9 @@
+[project]
+name = "redis-ratelimiters"
+version = "0.1.0"
+description = "Ratelimiter algorithms using Redis"
+dependencies = []
+
+[build-system]
+requires = ["uv"]
+build-backend = "uv"
