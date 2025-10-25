@@ -2,25 +2,14 @@
 
 A Python library providing **rate limiting decorators** for synchronous and asynchronous functions. Supports multiple rate limiting algorithms backed by Redis/Valkey.
 
-Built to explore **asyncio** and **distributed rate limiting** for Redis.
-
 ## Features
 * Supports multiple rate limiting aglorithms
-    * **Token Bucket**
-    * **Leaky Bucket**
-    * **Fixed Window**
-    * **Sliding Window Log**
+    * Token Bucket
+    * Leaky Bucket
+    * Fixed Window
+    * Sliding Window Log
 * Works with both **sync** and **async** python functions.
 
----
-
-## Installation
-
-```bash
-git clone https://github.com/brianpzaide/ratelimiters.git
-cd ratelimiters
-pip install .
-```
 ---
 
 ## Usage
@@ -50,7 +39,7 @@ async def main():
         print("Rate limit exceeded")
 ```
 
-All decorators follow the same pattern:
+All decorators follow the pattern:
 
 ```python
 @limiter.<algorithm>(capacity=..., refill_rate|leak_rate|window_size=...)
