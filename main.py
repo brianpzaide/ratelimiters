@@ -26,6 +26,10 @@ async def main():
         await greeter(11)
     except RateLimitExceeded as e:
             print("11 not called")
+
+    # uncomment the following for distributed usage
+    # tasks = [greeter(f"user{i}") for i in range(15)]
+    # await asyncio.gather(*tasks, return_exceptions=True)
     
 
 if __name__ == '__main__':
