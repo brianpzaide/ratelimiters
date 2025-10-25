@@ -1,9 +1,20 @@
 [project]
-name = "redis-ratelimiters"
+name = "ratelimiters"
 version = "0.1.0"
-description = "Ratelimiter algorithms using Redis"
-dependencies = []
+description = "Ratelimiter algorithms using Redis/Valkey"
+dependencies = [
+    "valkey==6.1.1",
+]
 
 [build-system]
-requires = ["uv"]
-build-backend = "uv"
+requires = ["uv-build"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+]

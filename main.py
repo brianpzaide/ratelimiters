@@ -1,6 +1,6 @@
 import asyncio
 
-from ratelimiters import Limiter, configure_connection, RateLimitExceeded
+from ratelimiters.limiters import Limiter, configure_connection, RateLimitExceeded
 
 configure_connection("redis://localhost:6379")
 limiter = Limiter()

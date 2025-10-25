@@ -20,7 +20,7 @@ def configure_connection(valkey_url: str = ""):
     Limiter._valkey = valkey.Valkey(connection_pool=pool)
 
 class Limiter:
-    _valkey = None
+    _valkey: valkey.Valkey = None
     _scripts_loaded = False
     
     _token_bucket_sha = None
@@ -101,7 +101,7 @@ class Limiter:
             return wrapper
         return decorator
     
-    def sliding_window_log(self, capacity:int = 10, window_size_seconds: int = 1):
+    def sliding_window(self, capacity:int = 10, window_size_seconds: int = 1):
         def decorator(func):
             func_unique_name = f"{func.__module__}.{func.__qualname__}"
             @wraps(func)
@@ -118,6 +118,9 @@ class Limiter:
                     raise RateLimitExceeded(f"function {func.__name__} called too many times, please try again later")
             return wrapper
         return decorator
+    
+    async def close_pool(self):
+        await Limiter._valkey.connection_pool.close()
 
 
 
@@ -133,7 +136,7 @@ local now = tonumber(time_data[1]) * 1000 + math.floor(tonumber(time_data[2]) / 
 local bucket = redis.call("HMGET", key, "tokens", "last_time")
 if bucket[1] == false then
     redis.call("HMSET", key, "tokens", capacity, "last_time", now)
-    local ttl = math.ceil(capacity / refill_rate / 1000) + 1
+    local ttl = math.ceil(capacity / refill_rate) + 1
     redis.call("EXPIRE", key, ttl)
     return 0 
 end
@@ -141,7 +144,7 @@ local tokens = tonumber(bucket[1])
 local last_time = tonumber(bucket[2])
 
 local elapsed = now - last_time
-local tokens_to_add = elapsed * refill_rate
+local tokens_to_add = (elapsed/1000) * refill_rate
 tokens = math.min(capacity, tokens + tokens_to_add)
 
 local allowed = 0
@@ -151,7 +154,7 @@ if tokens >= tokens_requested then
 end
 
 redis.call("HMSET", key, "tokens", tokens, "last_time", now)
-local ttl = math.ceil(capacity / refill_rate / 1000) + 1
+local ttl = math.ceil(capacity / refill_rate) + 1
 redis.call("EXPIRE", key, ttl)
 
 return allowed
@@ -168,8 +171,8 @@ local now = tonumber(time_data[1]) * 1000 + math.floor(tonumber(time_data[2]) / 
 
 local bucket = redis.call("HMGET", key, "tokens", "last_time")
 if bucket[1] == false then
-    redis.call("HMSET", key, "tokens", capacity, "last_time", now)
-    local ttl = math.ceil(capacity / leak_rate / 1000) + 1
+    redis.call("HMSET", key, "tokens", 0, "last_time", now)
+    local ttl = math.ceil(capacity / leak_rate) + 1
     redis.call("EXPIRE", key, ttl)
     return 0 
 end
@@ -178,7 +181,7 @@ local tokens = tonumber(bucket[1]) or 0
 local last_time = tonumber(bucket[2]) or now
 
 local elapsed = now - last_time
-local tokens_leaked = elapsed * leak_rate
+local tokens_leaked = (elapsed/1000) * leak_rate
 tokens = math.max(0, tokens - tokens_leaked)
 
 local allowed = 0
@@ -188,7 +191,7 @@ if tokens_requested <= capacity - tokens then
 end
 
 redis.call("HMSET", key, "tokens", tokens, "last_time", now)
-local ttl = math.ceil(capacity / leak_rate / 1000) + 1
+local ttl = math.ceil(capacity / leak_rate ) + 1
 redis.call("EXPIRE", key, ttl)
 
 return allowed
