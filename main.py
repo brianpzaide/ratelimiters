@@ -5,22 +5,27 @@ from ratelimiters.limiters import Limiter, configure_connection, RateLimitExceed
 configure_connection("redis://localhost:6379")
 limiter = Limiter()
 
+
 @limiter.token_bucket()
 def greeter(name):
     print(f"Hi {name}, have a nice day!!")
 
 
 async def main():
-    for i in range(11):
+    for i in range(10):
         try:
             await greeter(i)
+            # await asyncio.sleep(.1)
         except RateLimitExceeded as e:
-            print(e)
+            print(f"{i} not called")
 
-    await asyncio.sleep(.3)
+    # comment the following lines when running pytest
+    await asyncio.sleep(1.2)
     print("After refill")
-    await greeter(11)
-
+    try:
+        await greeter(11)
+    except RateLimitExceeded as e:
+            print("11 not called")
     
 
 if __name__ == '__main__':

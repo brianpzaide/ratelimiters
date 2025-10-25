@@ -37,10 +37,10 @@ class Limiter:
             if not cls._valkey:
                raise RuntimeError("Limiter not initialized. Call configure_connection() first.")
             if not cls._scripts_loaded:
-                cls._token_bucket_sha = await cls._valkey.script_load(_token_bucket_lua_script)
-                cls._leaky_bucket_sha = await cls._valkey.script_load(_leaky_bucket_lua_script)
-                cls._fixed_window_sha = await cls._valkey.script_load(_fixed_window_lua_script)
-                cls._sliding_window_sha = await cls._valkey.script_load(_sliding_window_lua_script)
+                cls._token_bucket_sha = cls._valkey.script_load(_token_bucket_lua_script)
+                cls._leaky_bucket_sha = cls._valkey.script_load(_leaky_bucket_lua_script)
+                cls._fixed_window_sha = cls._valkey.script_load(_fixed_window_lua_script)
+                cls._sliding_window_sha = cls._valkey.script_load(_sliding_window_lua_script)
                 cls._scripts_loaded = True
 
 
@@ -54,7 +54,7 @@ class Limiter:
             async def wrapper(*args, **kwargs):
                 await Limiter._configure()
 
-                to_allow = await Limiter._valkey.evalsha(Limiter._token_bucket_sha, 1, func_unique_name, 1, capacity, refill_rate)
+                to_allow = Limiter._valkey.evalsha(Limiter._token_bucket_sha, 1, func_unique_name, 1, capacity, refill_rate)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
                         return await func(*args, **kwargs)
@@ -72,7 +72,7 @@ class Limiter:
             async def wrapper(*args, **kwargs):
                 await Limiter._configure()
                 
-                to_allow = await Limiter._valkey.evalsha(Limiter._leaky_bucket_sha, 1, func_unique_name, 1, capacity, leak_rate)
+                to_allow = Limiter._valkey.evalsha(Limiter._leaky_bucket_sha, 1, func_unique_name, 1, capacity, leak_rate)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
                         return await func(*args, **kwargs)
@@ -90,7 +90,7 @@ class Limiter:
             async def wrapper(*args, **kwargs):
                 await Limiter._configure()
                 
-                to_allow = await Limiter._valkey.evalsha(Limiter._fixed_window_sha, 1, func_unique_name, 1, capacity, window_size_seconds)
+                to_allow = Limiter._valkey.evalsha(Limiter._fixed_window_sha, 1, func_unique_name, 1, capacity, window_size_seconds)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
                         return await func(*args, **kwargs)
@@ -108,7 +108,7 @@ class Limiter:
             async def wrapper(*args, **kwargs):
                 await Limiter._configure()
                 
-                to_allow = await Limiter._valkey.evalsha(Limiter._sliding_window_sha, 1, func_unique_name, 1, capacity, window_size_seconds)
+                to_allow = Limiter._valkey.evalsha(Limiter._sliding_window_sha, 1, func_unique_name, 1, capacity, window_size_seconds)
                 if to_allow:
                     if asyncio.iscoroutinefunction(func):
                         return await func(*args, **kwargs)
@@ -134,14 +134,14 @@ local time_data = redis.call("TIME")
 local now = tonumber(time_data[1]) * 1000 + math.floor(tonumber(time_data[2]) / 1000)
 
 local bucket = redis.call("HMGET", key, "tokens", "last_time")
-if bucket[1] == false then
+if bucket == false then
     redis.call("HMSET", key, "tokens", capacity, "last_time", now)
     local ttl = math.ceil(capacity / refill_rate) + 1
     redis.call("EXPIRE", key, ttl)
     return 0 
 end
-local tokens = tonumber(bucket[1])
-local last_time = tonumber(bucket[2])
+local tokens = tonumber(bucket[1]) or capacity
+local last_time = tonumber(bucket[2]) or now
 
 local elapsed = now - last_time
 local tokens_to_add = (elapsed/1000) * refill_rate
@@ -170,7 +170,7 @@ local time_data = redis.call("TIME")
 local now = tonumber(time_data[1]) * 1000 + math.floor(tonumber(time_data[2]) / 1000)
 
 local bucket = redis.call("HMGET", key, "tokens", "last_time")
-if bucket[1] == false then
+if bucket == false then
     redis.call("HMSET", key, "tokens", 0, "last_time", now)
     local ttl = math.ceil(capacity / leak_rate) + 1
     redis.call("EXPIRE", key, ttl)
@@ -205,7 +205,7 @@ local window_size_seconds = tonumber(ARGV[3])
 
 local bucket = redis.call("GET", key)
 
-if bucket == nil then
+if bucket == false then
     if tokens_requested <= capacity then
         local remaining_tokens = capacity - tokens_requested
         redis.call("SETEX", key, window_size_seconds, remaining_tokens)
