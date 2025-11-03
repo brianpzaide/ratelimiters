@@ -49,16 +49,6 @@ All decorators follow the pattern:
 
 ---
 
-## Testing
-
-Run the unit tests:
-
-```bash
-pytest .
-```
----
-
-
 ## Example: Distributed Usage
 
 ```python
